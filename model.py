@@ -1,22 +1,31 @@
 import numpy as np
 import pytorch_lightning as pl
 import torch
+import timm
 from cifar10_models.resnet import resnet18
 from optimizer import ISTA
 from torch.nn import functional as F
 
 
 class Resnet(pl.LightningModule):
+    '''Resnet model for testing'''
+
     def __init__(self, params={}):
+        '''the params records the hyper-parameters of the model and don't confuse with the parameters for the optimizer which stands for the weights of the model.'''
         super().__init__()
         self.params = params
-        self.model = resnet18()
-        self.cmodel = resnet18()
+        self.model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet20", pretrained=False)  # the model that we try to quantize
+        self.model.load_state_dict(torch.load('./cifar100_resnet20-23dac2f1.pt'))
+        self.cmodel = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet20", pretrained=False)  # the continuous model
 
-        state_dict = torch.load('./cifar10_models/state_dicts/resnet18.pt')
-        self.model.load_state_dict(state_dict)
+        # self.model = timm.create_model('resnet18', pretrained=True)
+        # self.cmodel = timm.create_model('resnet18', pretrained=False)
+        # self.model = resnet18()
+        # self.cmodel = resnet18()
+        # state_dict = torch.load('./cifar10_models/state_dicts/resnet18.pt')
+        # self.model.load_state_dict(state_dict)
 
-        if params['method'] == 'QAT' or params['method'] == 'ISTA':
+        if params['method'] == 'QAT' or params['method'] == 'ISTA':  # if the optimization method is either QAT (benchmark) or ISAT (our method), then, we turn the auto optimization off
             self.automatic_optimization = False
 
     def forward(self, x):
@@ -25,6 +34,8 @@ class Resnet(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, y = batch
+
+        '''Acquire the hyper-parameters from the params'''
         epsilon = self.params['epsilon']
         lam = self.params['lam'] if 'lam ' in self.params else 1
         opt = self.optimizers()
@@ -33,12 +44,12 @@ class Resnet(pl.LightningModule):
             torch.set_grad_enabled(False)
             cps, ps = [*self.cmodel.parameters()], [*self.model.parameters()]
             for i, (cp, qp) in enumerate(zip(cps, ps)):
-                if 0 < i < (len(cps) - 2): # do not quantize the first and the last layer
+                if 0 < i < (len(cps) - 2):  # do not quantize the first and the last layer and copy the continuous gradient to the quantized one and do the quantization accordingly
                     qp.copy_((cp / epsilon).round() * epsilon)
                 else:
                     qp.copy_(cp)
             torch.set_grad_enabled(True)
-
+        '''Perform the forward pass and backdprop'''
         y_hat = self.model(x)
         loss = F.cross_entropy(y_hat, y)
 
@@ -46,7 +57,7 @@ class Resnet(pl.LightningModule):
             self.model.zero_grad()
             self.manual_backward(loss)
             for cp, qp in zip(self.cmodel.parameters(), self.model.parameters()):
-                cp.grad = qp.grad
+                cp.grad = qp.grad  # copy the gradient to the continuous model
 
             if self.params['method'] == 'QAT':
                 opt.step()
@@ -111,6 +122,7 @@ class Resnet(pl.LightningModule):
         return {'acc': avg_acc}
 
     def configure_optimizers(self):
+        '''Setting the optimizer according to hyper-parameter'''
         optimizer = None
         if self.params['method'] == 'QAT':
             optimizer = torch.optim.Adam(self.cmodel.parameters(), lr=self.params['lr'])

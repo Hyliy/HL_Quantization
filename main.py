@@ -17,6 +17,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from itertools import product
 from model import Resnet
+from pprint import pprint
 
 
 def isfloat(value):
@@ -56,15 +57,18 @@ if __name__ == '__main__':
             T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2471, 0.2435, 0.2616])
         ]
     )
-    train_imgs = datasets.CIFAR10(root='./data', train=True, download=True, transform=img_preprocs_train)
-    valid_imgs = datasets.CIFAR10(root='./data', train=False, download=True, transform=img_preprocs_valid)
+    # train_imgs = datasets.CIFAR10(root='./data', train=True, download=True, transform=img_preprocs_train)
+    # valid_imgs = datasets.CIFAR10(root='./data', train=False, download=True, transform=img_preprocs_valid)
 
-    logger_folder = 'logs-resnet18'
-    model_folder = 'model-resnet18'
+    train_imgs = datasets.CIFAR100(root='./data', train=True, download=False, transform=img_preprocs_train)
+    valid_imgs = datasets.CIFAR100(root='./data', train=False, download=False, transform=img_preprocs_valid)
+
+    logger_folder = 'logs-resnet20-cifar100'
+    model_folder = 'model-resnet20-cifar100'
     batch_size = 128
     methods = ['ISTA', 'QAT']
-    epochs = [100]
-    epsilons = [1 / 2]
+    epochs = [200]
+    epsilons = reversed([1 / 2, 1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128])
     # epsilons = [1 / 2, 1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128]
 
     for i, (max_epochs, epsilon, method) in enumerate(product(epochs, epsilons, methods)):

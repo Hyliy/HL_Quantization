@@ -19,6 +19,7 @@ def adam(
         weight_decay: float,
         eps: float,
 ):
+    '''Implementation of the Adam Optimization'''
     with torch.no_grad():
         for i, param in enumerate(params):
 
@@ -56,6 +57,7 @@ def ini_alg(
         lam: float,
         epsilon: float
 ):
+    '''Implementation of the Algorithm 2 in the paper'''
     with torch.no_grad():
         lr = 1 / L
         alpha = lam * epsilon / L
@@ -68,6 +70,8 @@ def ini_alg(
 
 
 class ISTA(torch.optim.Optimizer):
+    '''Implementation of the proposed approach in which we first perform the Algorithm 2 to update the weights or params in our case,
+    and then, perform the Adam algorithm on the updated point.'''
 
     def __init__(self, parameters, defaults):
         super(ISTA, self).__init__(parameters, defaults)
@@ -76,12 +80,13 @@ class ISTA(torch.optim.Optimizer):
         super(ISTA, self).__setstate__(state)
 
     def step_(self, model, x, y, closure=None):
+        '''the function performs a step of the optimization'''
         loss = None
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
 
-        for group in self.param_groups:
+        for group in self.param_groups:  # iterate through the parameter groups
             params_with_grad = []
             grads = []
             exp_avgs = []
@@ -99,7 +104,7 @@ class ISTA(torch.optim.Optimizer):
 
                 params_with_grad.append(p)
                 grads.append(p.grad)
-                state = self.state[p]
+                state = self.state[p]  # by default we will have a stat:dict that records the current status of the associated parameters.
 
                 if len(state) == 0:
                     state['step'] = 0
