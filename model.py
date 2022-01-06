@@ -5,6 +5,7 @@ import timm
 from cifar10_models.resnet import resnet18
 from optimizer import ISTA
 from torch.nn import functional as F
+from timm.optim.lookahead import Lookahead
 
 
 class Resnet(pl.LightningModule):
@@ -14,9 +15,11 @@ class Resnet(pl.LightningModule):
         '''the params records the hyper-parameters of the model and don't confuse with the parameters for the optimizer which stands for the weights of the model.'''
         super().__init__()
         self.params = params
-        self.model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet20", pretrained=False)  # the model that we try to quantize
-        self.model.load_state_dict(torch.load('./cifar100_resnet20-23dac2f1.pt'))
-        self.cmodel = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet20", pretrained=False)  # the continuous model
+        self.model = timm.create_model('resnet18', pretrained=False)
+        # self.cmodel = timm.create_model('resnet50', pretrained=False)
+        # self.model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet20", pretrained=False)  # the model that we try to quantize
+        # self.model.load_state_dict(torch.load('./cifar100_resnet20-23dac2f1.pt'))
+        # self.cmodel = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet20", pretrained=False)  # the continuous model
 
         # self.model = timm.create_model('resnet18', pretrained=True)
         # self.cmodel = timm.create_model('resnet18', pretrained=False)
@@ -67,27 +70,18 @@ class Resnet(pl.LightningModule):
         _, indices = torch.max(y_hat, dim=1)
         acc = (indices == y).sum().item() / len(y)
 
-        torch.set_grad_enabled(False)
-        hep = epsilon / 2
-        sqep = epsilon ** 2 / 4
-        penalty = 0.0
-        for i, param in enumerate(self.model.parameters()):
-            if 0 < i < (len(cps) - 2):
-                penalty += (lam * (sqep - ((param % epsilon) - hep) ** 2)).sum()
-        torch.set_grad_enabled(True)
-
-        return {'loss': loss, 'acc': acc, 'penalty': penalty}
+        return {'loss': loss, 'acc': acc}
 
     def training_step_end(self, outputs):
         self.logger.experiment.add_scalar("Loss v.s. Step", outputs['loss'].item(), self.global_step)
-        self.logger.experiment.add_scalar("Penalty v.s. Step", outputs['penalty'].item(), self.global_step)
+        # self.logger.experiment.add_scalar("Penalty v.s. Step", outputs['penalty'].item(), self.global_step)
         return outputs
 
     def training_epoch_end(self, outputs):
         avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
-        avg_penalty = torch.stack([x['penalty'] for x in outputs]).mean()
+        # avg_penalty = torch.stack([x['penalty'] for x in outputs]).mean()
         self.logger.experiment.add_scalar("Loss v.s. Epoch", avg_loss, self.current_epoch)
-        self.logger.experiment.add_scalar("Penalty v.s. Epoch", avg_penalty, self.current_epoch)
+        # self.logger.experiment.add_scalar("Penalty v.s. Epoch", avg_penalty, self.current_epoch)
         return
 
     def validation_step(self, batch, batch_idx):
@@ -129,7 +123,8 @@ class Resnet(pl.LightningModule):
         elif self.params['method'] == 'Adam':
             optimizer = torch.optim.Adam(self.model.parameters(), lr=self.params['lr'])
         elif self.params['method'] == 'SGD':
-            optimizer = torch.optim.SGD(self.model.parameters(), lr=self.params['lr'], momentum=.1, dampening=.2, weight_decay=self.params['weight_decay'])
+            optimizer = torch.optim.SGD(self.model.parameters(), lr=.01)
+            optimizer = Lookahead(optimizer, alpha=.8, k=5)
         elif self.params['method'] == 'ISTA':
             optimizer = ISTA(self.cmodel.parameters(), self.params)
         return optimizer
