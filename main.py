@@ -45,16 +45,18 @@ def parse_params(f: str) -> dict:
 if __name__ == '__main__':
     img_preprocs_train = T.Compose(
         [
-            T.RandomCrop(32, padding=4),
-            T.RandomHorizontalFlip(),
+            # T.RandomCrop(32, padding=4),
+            # T.RandomHorizontalFlip(),
+            T.Resize(224, interpolation=3),
             T.ToTensor(),
-            T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2471, 0.2435, 0.2616])
+            T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
         ]
     )
     img_preprocs_valid = T.Compose(
         [
+            T.Resize(224, interpolation=3),
             T.ToTensor(),
-            T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2471, 0.2435, 0.2616])
+            T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
         ]
     )
     # train_imgs = datasets.CIFAR10(root='./data', train=True, download=True, transform=img_preprocs_train)
@@ -63,9 +65,9 @@ if __name__ == '__main__':
     train_imgs = datasets.CIFAR100(root='./data', train=True, download=False, transform=img_preprocs_train)
     valid_imgs = datasets.CIFAR100(root='./data', train=False, download=False, transform=img_preprocs_valid)
 
-    logger_folder = 'logs-resnet20-cifar100'
-    model_folder = 'model-resnet20-cifar100'
-    batch_size = 128
+    logger_folder = 'logs-natnet-cifar100'
+    model_folder = 'model-netnet-cifar100'
+    batch_size = 256
     methods = ['ISTA', 'QAT']
     epochs = [200]
     epsilons = reversed([1 / 2, 1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128])
