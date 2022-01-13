@@ -47,14 +47,15 @@ if __name__ == '__main__':
         [
             # T.RandomCrop(32, padding=4),
             # T.RandomHorizontalFlip(),
-            T.Resize(224, interpolation=3),
+            # T.Resize(224, interpolation=3),
+            T.Resize(32),
             T.ToTensor(),
             T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
         ]
     )
     img_preprocs_valid = T.Compose(
         [
-            T.Resize(224, interpolation=3),
+            T.Resize(32),
             T.ToTensor(),
             T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
         ]
@@ -65,8 +66,8 @@ if __name__ == '__main__':
     train_imgs = datasets.CIFAR100(root='./data', train=True, download=False, transform=img_preprocs_train)
     valid_imgs = datasets.CIFAR100(root='./data', train=False, download=False, transform=img_preprocs_valid)
 
-    logger_folder = 'logs-natnet-cifar100'
-    model_folder = 'model-netnet-cifar100'
+    logger_folder = 'logs-resnet32-quantized-all-cifar100'
+    model_folder = 'model-resnet32-quantized-all-cifar100'
     batch_size = 256
     methods = ['ISTA', 'QAT']
     epochs = [200]

@@ -16,15 +16,15 @@ class Resnet(pl.LightningModule):
         '''the params records the hyper-parameters of the model and don't confuse with the parameters for the optimizer which stands for the weights of the model.'''
         super().__init__()
         self.params = params
-        config = json.load(open('./subnets/cifar100/net-img@224-flops@796-top1@88.3/net.config'))
-        self.model = NATNet.build_from_config(config, pretrained=True)
-        config = json.load(open('./subnets/cifar100/net-img@224-flops@796-top1@88.3/net.config'))
-        self.cmodel = NATNet.build_from_config(config, pretrained=True)
+        # config = json.load(open('./subnets/cifar100/net-img@224-flops@796-top1@88.3/net.config'))
+        # self.model = NATNet.build_from_config(config, pretrained=True)
+        # config = json.load(open('./subnets/cifar100/net-img@224-flops@796-top1@88.3/net.config'))
+        # self.cmodel = NATNet.build_from_config(config, pretrained=True)
         # self.model = timm.create_model('efficientnet_l2', pretrained=False)
         # self.cmodel = timm.create_model('resnet50', pretrained=False)
-        # self.model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet20", pretrained=False)  # the model that we try to quantize
-        # self.model.load_state_dict(torch.load('./cifar100_resnet20-23dac2f1.pt'))
-        # self.cmodel = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet20", pretrained=False)  # the continuous model
+        self.model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet32", pretrained=False)  # the model that we try to quantize
+        self.model.load_state_dict(torch.load('./cifar100_resnet32-84213ce6.pt'))
+        self.cmodel = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet32", pretrained=False)  # the continuous model
 
         # self.model = timm.create_model('resnet18', pretrained=True)
         # self.cmodel = timm.create_model('resnet18', pretrained=False)
@@ -52,10 +52,11 @@ class Resnet(pl.LightningModule):
             torch.set_grad_enabled(False)
             cps, ps = [*self.cmodel.parameters()], [*self.model.parameters()]
             for i, (cp, qp) in enumerate(zip(cps, ps)):
-                if 0 < i < (len(cps) - 2):  # do not quantize the first and the last layer and copy the continuous gradient to the quantized one and do the quantization accordingly
-                    qp.copy_((cp / epsilon).round() * epsilon)
-                else:
-                    qp.copy_(cp)
+                qp.copy_((cp / epsilon).round() * epsilon)
+                # if 0 < i < (len(cps) - 2):  # do not quantize the first and the last layer and copy the continuous gradient to the quantized one and do the quantization accordingly
+                #     qp.copy_((cp / epsilon).round() * epsilon)
+                # else:
+                #     qp.copy_(cp)
             torch.set_grad_enabled(True)
         '''Perform the forward pass and backdprop'''
         y_hat = self.model(x)
@@ -209,5 +210,5 @@ class BitM(pl.LightningModule):
             optimizer = torch.optim.SGD(self.model.parameters(), lr=.01)
             optimizer = Lookahead(optimizer, alpha=.8, k=5)
         elif self.params['method'] == 'ISTA':
-            optimizer = ISTA(self.cmodel.parameters(), self.params)
+            optimizer = ISTA(self.model.parameters(), self.params)
         return optimizer
