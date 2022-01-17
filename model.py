@@ -6,6 +6,7 @@ import json
 from optimizer import ISTA, QAT
 from torch.nn import functional as F
 from timm.optim.lookahead import Lookahead
+from cifar10_models.resnet import resnet18, resnet50
 from codebase.networks.natnet import NATNet
 
 
@@ -18,14 +19,14 @@ class Resnet(pl.LightningModule):
         self.multiplier = 1
         self.old_parameters = None  # list of paramters from previous iteration
         self.params = params
-        config = json.load(
-            open("./subnets/cifar100/net-img@224-flops@796-top1@88.3/net.config")
-        )
-        self.model = NATNet.build_from_config(config, pretrained=True)
-        config = json.load(
-            open("./subnets/cifar100/net-img@224-flops@796-top1@88.3/net.config")
-        )
-        self.cmodel = NATNet.build_from_config(config, pretrained=True)
+        # config = json.load(
+        #     open("./subnets/cifar100/net-img@224-flops@796-top1@88.3/net.config")
+        # )
+        # self.model = NATNet.build_from_config(config, pretrained=True)
+        # config = json.load(
+        #     open("./subnets/cifar100/net-img@224-flops@796-top1@88.3/net.config")
+        # )
+        # self.cmodel = NATNet.build_from_config(config, pretrained=True)
         # self.model = timm.create_model('efficientnet_l2', pretrained=False)
         # self.cmodel = timm.create_model('resnet50', pretrained=False)
         # self.model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_resnet20", pretrained=False)  # the model that we try to quantize
@@ -34,13 +35,19 @@ class Resnet(pl.LightningModule):
 
         # self.model = timm.create_model('resnet18', pretrained=True)
         # self.cmodel = timm.create_model('resnet18', pretrained=False)
-        # self.model = resnet18()
-        # self.cmodel = resnet18()
-        # state_dict = torch.load('./cifar10_models/state_dicts/resnet18.pt')
-        # self.model.load_state_dict(state_dict)
+        self.model = resnet50()
+        self.cmodel = resnet50()
+        state_dict = torch.load('./cifar10_models/state_dicts/resnet50.pt')
+        self.model.load_state_dict(state_dict)
+        self.cmodel.load_state_dict(state_dict)
+
+        self.set_epsilons_ = [None for _ in range(len([*self.model.parameters()]))]
+        self.max_ = 1
+        self.min_ = -1
+        print(self.max_, self.min_)
 
         if (
-            params["method"] == "QAT" or params["method"] == "ISTA"
+                params["method"] == "QAT" or params["method"] == "ISTA"
         ):  # if the optimization method is either QAT (benchmark) or ISAT (our method), then, we turn the auto optimization off
             self.automatic_optimization = False
 
@@ -56,15 +63,26 @@ class Resnet(pl.LightningModule):
         lam = self.params["lam"] if "lam " in self.params else 1
         opt = self.optimizers()
 
-        # if self.params["method"] == "QAT" or self.params["method"] == "ISTA":
         if self.params["method"] == "QAT":
             torch.set_grad_enabled(False)
             cps, ps = [*self.cmodel.parameters()], [*self.model.parameters()]
             for i, (cp, qp) in enumerate(zip(cps, ps)):
                 if (
-                    0 < i < (len(cps) - 2)
+                        0 <= i < (len(cps))
                 ):  # do not quantize the first and the last layer and copy the continuous gradient to the quantized one and do the quantization accordingly
-                    qp.copy_((cp / epsilon).round() * epsilon)
+
+                    if self.set_epsilons_[i] is None:
+                        self.set_epsilons_[i] = epsilon
+
+                    qp.copy_((cp / self.set_epsilons_[i]).round() * self.set_epsilons_[i])
+
+                    buf = qp / self.set_epsilons_[i]
+                    buf = torch.unique(buf)
+                    if buf.size()[0] > 2 // epsilon:
+                        print()
+                        print('===========')
+                        print(i, buf.size()[0])
+                        print('===========')
                 else:
                     qp.copy_(cp)
             torch.set_grad_enabled(True)
@@ -73,18 +91,32 @@ class Resnet(pl.LightningModule):
         elif self.params["method"] == "ISTA":
             cur_params = []
             ps = [*self.model.parameters()]
+
+            torch.set_grad_enabled(False)
             for i, qp in enumerate(ps):
                 if (
-                    0 < i < (len(qp) - 2)
+                        0 <= i < (len(ps))
                 ):  # do not quantize the first and the last layer and copy the continuous gradient to the quantized one and do the quantization accordingly
-                    qp.copy_((qp / epsilon).round() * epsilon)
+
+                    if self.set_epsilons_[i] is None:
+                        self.set_epsilons_[i] = epsilon
+
+                    qp.copy_((qp / self.set_epsilons_[i]).round() * self.set_epsilons_[i])
                     cur_params.append(qp + 0)  # record paramters
+
+                    buf = qp
+                    buf = torch.unique(buf)
+                    if buf.size()[0] > (2 // epsilon):
+                        print()
+                        print('===========')
+                        print(i, buf.max().item(), self.max_, buf.min(), self.min_)
+                        print('===========')
 
             # compare parameters to old parameters and increase multiplier if they are the same
             if self.old_parameters:
                 increase_multiplier = True
                 for i, (cp, op) in enumerate(zip(cur_params, self.old_parameters)):
-                    if cp != op:
+                    if not torch.equal(cp, op):
                         increase_multiplier = False
                         break
                 if increase_multiplier == True:
@@ -92,24 +124,28 @@ class Resnet(pl.LightningModule):
                 else:
                     self.multiplier = 1
                     # self.multiplier += -(self.multiplier>1) #if the other doesn't work, maybe try this?
+
+            # print('=============')
+            # print(self.multiplier)
+            # print('*************')
             self.old_parameters = cur_params
 
         """Perform the forward pass and backdprop"""
+        torch.set_grad_enabled(True)
+        self.model.zero_grad()
         y_hat = self.model(x)
         loss = F.cross_entropy(y_hat, y)
+        self.manual_backward(loss)
 
         # if self.params["method"] == "QAT" or self.params["method"] == "ISTA":
         if self.params["method"] == "QAT":
-            self.model.zero_grad()
-            self.manual_backward(loss)
+
             for cp, qp in zip(self.cmodel.parameters(), self.model.parameters()):
                 cp.grad = qp.grad  # copy the gradient to the continuous model
-
         if self.params["method"] == "QAT":
-            opt.step()
+            opt.step_()
         elif self.params["method"] == "ISTA":
-            opt.step_(self.model, x, y, multiplier=self.multiplier)
-
+            opt.step_(self.model, x, y, multiplier=self.multiplier, set_epsilons_=self.set_epsilons_)
         _, indices = torch.max(y_hat, dim=1)
         acc = (indices == y).sum().item() / len(y)
 
@@ -271,5 +307,5 @@ class BitM(pl.LightningModule):
             optimizer = Lookahead(optimizer, alpha=0.8, k=5)
         elif self.params["method"] == "ISTA":
             # optimizer = ISTA(self.cmodel.parameters(), self.params)
-            optimizer = ISTA(self.qmodel.parameters(), self.params)
+            optimizer = ISTA(self.model.parameters(), self.params)
         return optimizer

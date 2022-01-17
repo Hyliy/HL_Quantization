@@ -1,23 +1,23 @@
 import torch
 import math
 from torch import Tensor
-from typing import List
+from typing import List, Optional
 from torch.nn import functional as F
 
 
 def adam(
-    params: List[Tensor],
-    grads: List[Tensor],
-    exp_avgs: List[Tensor],
-    exp_avg_sqs: List[Tensor],
-    max_exp_avg_sqs: List[Tensor],
-    state_steps: List[int],
-    amsgrad: bool,
-    beta1: float,
-    beta2: float,
-    lr: float,
-    weight_decay: float,
-    eps: float,
+        params: List[Tensor],
+        grads: List[Tensor],
+        exp_avgs: List[Tensor],
+        exp_avg_sqs: List[Tensor],
+        max_exp_avg_sqs: List[Tensor],
+        state_steps: List[int],
+        amsgrad: bool,
+        beta1: float,
+        beta2: float,
+        lr: float,
+        weight_decay: float,
+        eps: float,
 ):
     """Implementation of the Adam Optimization"""
     with torch.no_grad():
@@ -52,17 +52,60 @@ def adam(
             param.addcdiv_(exp_avg, denom, value=-step_size)
 
 
+def sgd(params: List[Tensor],
+        d_p_list: List[Tensor],
+        momentum_buffer_list: List[Optional[Tensor]],
+        *,
+        weight_decay: float,
+        momentum: float,
+        lr: float,
+        dampening: float,
+        nesterov: bool,
+        maximize: bool):
+    r"""Functional API that performs SGD algorithm computation.
+    See :class:`~torch.optim.SGD` for details.
+    """
+    with torch.no_grad():
+        for i, param in enumerate(params):
+
+            d_p = d_p_list[i]
+            if weight_decay != 0:
+                d_p = d_p.add(param, alpha=weight_decay)
+
+            if momentum != 0:
+                buf = momentum_buffer_list[i]
+
+                if buf is None:
+                    buf = torch.clone(d_p).detach()
+                    momentum_buffer_list[i] = buf
+                else:
+                    buf.mul_(momentum).add_(d_p, alpha=1 - dampening)
+
+                if nesterov:
+                    d_p = d_p.add(buf, alpha=momentum)
+                else:
+                    d_p = buf
+
+            alpha = lr if maximize else -lr
+            param.add_(d_p, alpha=alpha)
+
+
 def ini_alg(
-    params: List[Tensor], grads: List[Tensor], L: float, lam: float, epsilon: float
+        params: List[Tensor], grads: List[Tensor], L: float, lam: float, epsilon: float, multipler: float, set_epsilons_
 ):
     """Implementation of the Algorithm 2 in the paper"""
     with torch.no_grad():
-        lr = 1 / L
-        alpha = lam * epsilon / L
+        lr = multipler * 1 / L
 
         for i, param in enumerate(params):
             grad = grads[i]
             zero = torch.zeros_like(grad)
+            epsilon = set_epsilons_[i]
+            alpha = lam * epsilon / L
+
+            if grad[grad.abs() > 0].size()[0] == 0:
+                grad.add_(torch.randint(-1, 1, size=grad.size(), device='cuda') * 1 * epsilon * (1 / lr))
+
             tmp = lr * grad.abs() - alpha
             param.add_(-1 * torch.max(tmp, zero) * grad.sign())
 
@@ -77,7 +120,7 @@ class ISTA(torch.optim.Optimizer):
     def __setstate__(self, state):
         super(ISTA, self).__setstate__(state)
 
-    def step_(self, model, x, y, closure=None, multiplier=1):
+    def step_(self, model, x, y, closure=None, multiplier=1, set_epsilons_=None):
         """the function performs a step of the optimization"""
         loss = None
         if closure is not None:
@@ -93,7 +136,7 @@ class ISTA(torch.optim.Optimizer):
             max_exp_avg_sqs = []
             state_steps = []
             epsilon = group["epsilon"]
-            L = group["L"] / multiplier
+            L = group["L"]
             lam = group["lam"]
 
             for p in group["params"]:
@@ -123,26 +166,46 @@ class ISTA(torch.optim.Optimizer):
                 state["step"] += 1
                 state_steps.append(state["step"])
 
-            ini_alg(params_with_grad, grads, L, lam, epsilon)
+            ini_alg(params_with_grad, grads, L, lam, epsilon, multiplier, set_epsilons_=set_epsilons_)
 
             self.zero_grad()
             y_hat = model(x)
             loss = F.cross_entropy(y_hat, y)
             loss.backward()
 
-            adam(
+            # adam(
+            #     params_with_grad,
+            #     grads,
+            #     exp_avgs,
+            #     exp_avg_sqs,
+            #     max_exp_avg_sqs,
+            #     state_steps,
+            #     False,
+            #     0.9,
+            #     0.999,
+            #     1 / L,
+            #     0.0,
+            #     1e-8,
+            # )
+
+            # print('3333333333333333333')
+            # count = 0
+            # for i, g in enumerate(grads):
+            #     if g.sum() == 0:
+            #         count += 1
+            # print(count)
+            # print('3333333333333333333')
+
+            sgd(
                 params_with_grad,
                 grads,
-                exp_avgs,
-                exp_avg_sqs,
-                max_exp_avg_sqs,
-                state_steps,
-                False,
-                0.9,
-                0.999,
-                1 / L,
-                0.0,
-                1e-8,
+                [],
+                weight_decay=0,
+                momentum=0,
+                lr=1 / L,
+                dampening=0,
+                nesterov=False,
+                maximize=False
             )
         return loss
 
@@ -197,18 +260,36 @@ class QAT(torch.optim.Optimizer):
                 state["step"] += 1
                 state_steps.append(state["step"])
 
-            adam(
+            # adam(
+            #     params_with_grad,
+            #     grads,
+            #     exp_avgs,
+            #     exp_avg_sqs,
+            #     max_exp_avg_sqs,
+            #     state_steps,
+            #     False,
+            #     0.9,
+            #     0.999,
+            #     1 / L,
+            #     0.0,
+            #     1e-8,
+            # )
+
+            # print('3333333333333333333')
+            # for g in grads:
+            #     if g.sum() != 0:
+            #         print(g.sum())
+            # print('3333333333333333333')
+
+            sgd(
                 params_with_grad,
                 grads,
-                exp_avgs,
-                exp_avg_sqs,
-                max_exp_avg_sqs,
-                state_steps,
-                False,
-                0.9,
-                0.999,
-                1 / L,
-                0.0,
-                1e-8,
+                [],
+                weight_decay=0,
+                momentum=0,
+                lr=1 / L,
+                dampening=0,
+                nesterov=False,
+                maximize=False
             )
         return

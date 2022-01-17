@@ -60,19 +60,20 @@ if __name__ == '__main__':
             T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
         ]
     )
-    # train_imgs = datasets.CIFAR10(root='./data', train=True, download=True, transform=img_preprocs_train)
-    # valid_imgs = datasets.CIFAR10(root='./data', train=False, download=True, transform=img_preprocs_valid)
+    train_imgs = datasets.CIFAR10(root='./data', train=True, download=False, transform=img_preprocs_train)
+    valid_imgs = datasets.CIFAR10(root='./data', train=False, download=False, transform=img_preprocs_valid)
 
-    train_imgs = datasets.CIFAR100(root='./data', train=True, download=False, transform=img_preprocs_train)
-    valid_imgs = datasets.CIFAR100(root='./data', train=False, download=False, transform=img_preprocs_valid)
+    # train_imgs = datasets.CIFAR100(root='./data', train=True, download=False, transform=img_preprocs_train)
+    # valid_imgs = datasets.CIFAR100(root='./data', train=False, download=False, transform=img_preprocs_valid)
 
-    logger_folder = 'logs-resnet32-quantized-all-cifar100'
-    model_folder = 'model-resnet32-quantized-all-cifar100'
+    logger_folder = 'logs-resnet50-cifar10-sgd-final'
+    model_folder = 'model-resnet50-cifar10-sgd-final'
     batch_size = 256
+    # methods = ['ISTA', 'QAT']
     methods = ['ISTA', 'QAT']
     epochs = [200]
-    epsilons = reversed([1 / 2, 1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128])
-    # epsilons = [1 / 2, 1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128]
+    # epsilons = reversed([1 / 2, 1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128])
+    epsilons = [1 / 2, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128]
 
     for i, (max_epochs, epsilon, method) in enumerate(product(epochs, epsilons, methods)):
         params_QAT = dict(
@@ -80,6 +81,8 @@ if __name__ == '__main__':
             max_epochs=max_epochs,
             method='QAT',
             lr=3e-4,
+            L=1 / 3e-4,
+            lam=1e-3,
             epsilon=epsilon
         )
         params_ISTA = dict(
@@ -87,7 +90,7 @@ if __name__ == '__main__':
             max_epochs=max_epochs,
             method='ISTA',
             L=1 / 3e-4,
-            lam=0.01,
+            lam=1e-3,
             epsilon=epsilon
         )
         model = None
@@ -115,10 +118,9 @@ if __name__ == '__main__':
         ckpt = ModelCheckpoint(
             monitor='acc',
             dirpath=model_folder,
-            filename='{epoch}-{acc:.4f}',
+            filename='model-{name}-'.format(name=name) + '{epoch}-{acc:.4f}',
             save_top_k=1,
-            mode='max',
-            prefix='model-{name}'.format(name=name)
+            mode='max'
         )
 
         trainer = pl.Trainer(max_epochs=max_epochs, gpus=1, logger=logger, callbacks=[ckpt])
