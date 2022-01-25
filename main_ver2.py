@@ -62,7 +62,7 @@ if __name__ == '__main__':
     logger_folder = 'logs-resnet50-mnist-sgd-final-quantized-all-redo'
     model_folder = 'model-resnet50-mnist-sgd-final-quantized-all-redo'
     batch_size = 256
-    methods = ['ISTA_LIU']
+    methods = ['ISTA_LIU', 'QAT']
     epochs = [200]
     epsilons = [1 / 4]
 
@@ -86,17 +86,17 @@ if __name__ == '__main__':
         )
         model = None
         if method == 'QAT':
-            # model = Resnet(params_QAT)
-            model = Resnet.load_from_checkpoint(
-                'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
-                params=params_QAT
-            )
+            model = Resnet(params_QAT)
+#             model = Resnet.load_from_checkpoint(
+#                'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
+#                params=params_QAT
+#             )
         elif method == 'ISTA_LIU':
-            # model = Resnet(params_ISTA)
-            model = Resnet.load_from_checkpoint(
-                'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
-                params=params_ISTA
-            )
+            model = Resnet(params_ISTA)
+#             model = Resnet.load_from_checkpoint(
+#                 'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
+#                 params=params_ISTA
+#             )
         name_QAT = '{params}'.format(
             params='-'.join([k + '={}'.format(v) if k != 'L' and k != 'epsilon' else k + '={}'.format(1 / v) for k, v in params_QAT.items()])
         )
