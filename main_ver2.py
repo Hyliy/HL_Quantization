@@ -8,7 +8,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 from torchvision import transforms as T, datasets
 
-from model_liu import Resnet
+from model_liu_ver2 import Resnet
 
 
 def isfloat(value):
@@ -59,12 +59,12 @@ if __name__ == '__main__':
     train_imgs = datasets.MNIST(root='./data', train=True, download=True, transform=img_preprocs_train)
     valid_imgs = datasets.MNIST(root='./data', train=False, download=True, transform=img_preprocs_valid)
 
-    logger_folder = 'logs-resnet20-mnist-sgd-final-quantized-all'
-    model_folder = 'model-resnet20-mnist-sgd-final-quantized-all'
+    logger_folder = 'logs-resnet50-mnist-sgd-final-quantized-all-redo'
+    model_folder = 'model-resnet50-mnist-sgd-final-quantized-all-redo'
     batch_size = 256
-    methods = ['ISTA_LIU', 'QAT']
+    methods = ['ISTA_LIU']
     epochs = [200]
-    epsilons = [1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128]
+    epsilons = [1 / 4]
 
     for i, (max_epochs, epsilon, method) in enumerate(product(epochs, epsilons, methods)):
         params_QAT = dict(
@@ -88,13 +88,13 @@ if __name__ == '__main__':
         if method == 'QAT':
             # model = Resnet(params_QAT)
             model = Resnet.load_from_checkpoint(
-                'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet18-mnist-acc=0.9723.ckpt',
+                'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
                 params=params_QAT
             )
         elif method == 'ISTA_LIU':
             # model = Resnet(params_ISTA)
             model = Resnet.load_from_checkpoint(
-                'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet18-mnist-acc=0.9723.ckpt',
+                'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
                 params=params_ISTA
             )
         name_QAT = '{params}'.format(
