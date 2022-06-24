@@ -4,6 +4,7 @@ import torch
 import torchvision.models as models
 from torch.nn import functional as F
 from optimizer_liu_ver2 import ISTA_LIU, QAT
+from cifar10_models.resnet import resnet18, resnet34, resnet50
 
 
 class Resnet(pl.LightningModule):
@@ -17,10 +18,12 @@ class Resnet(pl.LightningModule):
         self.params = params
         self.SoftThresholding_counter = 0
 
-        self.model = models.resnet50(num_classes=10)
-        self.model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-        self.cmodel = models.resnet50(num_classes=10)
-        self.cmodel.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        # self.model = models.resnet50(num_classes=10)
+        # self.model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        # self.cmodel = models.resnet50(num_classes=10)
+        # self.cmodel.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        self.model = resnet18(pretrained=True)
+        self.cmodel = resnet18(pretrained=True)
 
         self.set_epsilons_ = [params['epsilon'] for _ in range(len([*self.model.parameters()]))]
         self.names = [p[0] for p in self.model.named_parameters()]

@@ -16,7 +16,7 @@ from torch.optim.optimizer import Optimizer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from itertools import product
-from model import Resnet
+from model_liu import Resnet
 from pprint import pprint
 
 
@@ -50,30 +50,35 @@ if __name__ == '__main__':
             # T.Resize(224, interpolation=3),
             T.Resize(32),
             T.ToTensor(),
-            T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
+            # T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
         ]
     )
     img_preprocs_valid = T.Compose(
         [
             T.Resize(32),
             T.ToTensor(),
-            T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
+            # T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
         ]
     )
-    train_imgs = datasets.CIFAR10(root='./data', train=True, download=False, transform=img_preprocs_train)
-    valid_imgs = datasets.CIFAR10(root='./data', train=False, download=False, transform=img_preprocs_valid)
+    # train_imgs = datasets.CIFAR10(root='./data', train=True, download=False, transform=img_preprocs_train)
+    # valid_imgs = datasets.CIFAR10(root='./data', train=False, download=False, transform=img_preprocs_valid)
 
-    # train_imgs = datasets.CIFAR100(root='./data', train=True, download=False, transform=img_preprocs_train)
-    # valid_imgs = datasets.CIFAR100(root='./data', train=False, download=False, transform=img_preprocs_valid)
+    # train_imgs = datasets.CIFAR100(root='./data', train=True, download=True, transform=img_preprocs_train)
+    # valid_imgs = datasets.CIFAR100(root='./data', train=False, download=True, transform=img_preprocs_valid)
 
-    logger_folder = 'logs-resnet50-cifar10-sgd-final'
-    model_folder = 'model-resnet50-cifar10-sgd-final'
+    train_imgs = datasets.MNIST(root='./data', train=True, download=True, transform=img_preprocs_train)
+    valid_imgs = datasets.MNIST(root='./data', train=False, download=True, transform=img_preprocs_valid)
+
+    logger_folder = 'logs-resnet20-mnist-sgd-final-quantized-all'
+    model_folder = 'model-resnet20-mnist-sgd-final-quantized-all'
     batch_size = 256
     # methods = ['ISTA', 'QAT']
-    methods = ['ISTA', 'QAT']
+    methods = ['ISTA_LIU', 'QAT']
     epochs = [200]
     # epsilons = reversed([1 / 2, 1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128])
-    epsilons = [1 / 2, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128]
+    epsilons = [1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128]
+    # epsilons = [1 / 16, 1 / 32, 1 / 64, 1 / 128]
+    # epsilons = [1]
 
     for i, (max_epochs, epsilon, method) in enumerate(product(epochs, epsilons, methods)):
         params_QAT = dict(
@@ -88,16 +93,24 @@ if __name__ == '__main__':
         params_ISTA = dict(
             batch=batch_size,
             max_epochs=max_epochs,
-            method='ISTA',
-            L=1 / 3e-4,
-            lam=1e-3,
+            method='ISTA_LIU',
+            L=1 / 5e-3,
+            lam=1e-4,
             epsilon=epsilon
         )
         model = None
         if method == 'QAT':
             model = Resnet(params_QAT)
-        elif method == 'ISTA':
+            # model = Resnet.load_from_checkpoint(
+            #     'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet18-mnist-acc=0.9723.ckpt',
+            #     params=params_QAT
+            # )
+        elif method == 'ISTA_LIU':
             model = Resnet(params_ISTA)
+            # model = Resnet.load_from_checkpoint(
+            #     'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet18-mnist-acc=0.9723.ckpt',
+            #     params=params_ISTA
+            # )
         name_QAT = '{params}'.format(
             params='-'.join([k + '={}'.format(v) if k != 'L' and k != 'epsilon' else k + '={}'.format(1 / v) for k, v in params_QAT.items()])
         )
@@ -107,7 +120,7 @@ if __name__ == '__main__':
         name = None
         if method == 'QAT':
             name = name_QAT
-        elif method == 'ISTA':
+        elif method == 'ISTA_LIU':
             name = name_ISTA
 
         train_loader = DataLoader(train_imgs, batch_size=batch_size, shuffle=True)

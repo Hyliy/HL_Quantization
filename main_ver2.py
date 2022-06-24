@@ -3,6 +3,7 @@ from itertools import product
 
 import pytorch_lightning as pl
 import regex
+import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
@@ -34,6 +35,7 @@ def parse_params(f: str) -> dict:
 
 
 if __name__ == '__main__':
+    print(torch.__version__)
     img_preprocs_train = T.Compose(
         [
             # T.RandomCrop(32, padding=4),
@@ -41,30 +43,30 @@ if __name__ == '__main__':
             # T.Resize(224, interpolation=3),
             T.Resize(32),
             T.ToTensor(),
-            # T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
+            T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
         ]
     )
     img_preprocs_valid = T.Compose(
         [
             T.Resize(32),
             T.ToTensor(),
-            # T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
+            T.Normalize(mean=[0.49139968, 0.48215827, 0.44653124], std=[0.24703233, 0.24348505, 0.26158768])
         ]
     )
 
-    # train_imgs = datasets.CIFAR10(root='./data', train=True, download=False, transform=img_preprocs_train)
-    # valid_imgs = datasets.CIFAR10(root='./data', train=False, download=False, transform=img_preprocs_valid)
+    train_imgs = datasets.CIFAR10(root='./data', train=True, download=False, transform=img_preprocs_train)
+    valid_imgs = datasets.CIFAR10(root='./data', train=False, download=False, transform=img_preprocs_valid)
     # train_imgs = datasets.CIFAR100(root='./data', train=True, download=True, transform=img_preprocs_train)
     # valid_imgs = datasets.CIFAR100(root='./data', train=False, download=True, transform=img_preprocs_valid)
-    train_imgs = datasets.MNIST(root='./data', train=True, download=True, transform=img_preprocs_train)
-    valid_imgs = datasets.MNIST(root='./data', train=False, download=True, transform=img_preprocs_valid)
+    # train_imgs = datasets.MNIST(root='./data', train=True, download=True, transform=img_preprocs_train)
+    # valid_imgs = datasets.MNIST(root='./data', train=False, download=True, transform=img_preprocs_valid)
 
-    logger_folder = 'logs-resnet50-mnist-sgd-final-quantized-all-redo'
-    model_folder = 'model-resnet50-mnist-sgd-final-quantized-all-redo'
+    logger_folder = 'results/logs-resnet18-cifar10-sgd-final-quantized-all-redo'
+    model_folder = 'results/model-resnet18-cifar10-sgd-final-quantized-all-redo'
     batch_size = 256
-    methods = ['ISTA_LIU']
+    methods = ['QAT', 'ISTA_LIU']
     epochs = [200]
-    epsilons = [1 / 4]
+    epsilons = [1 / 4, 1 / 8, 1 / 16, 1 / 32, 1 / 64, 1 / 128]
 
     for i, (max_epochs, epsilon, method) in enumerate(product(epochs, epsilons, methods)):
         params_QAT = dict(
@@ -86,17 +88,17 @@ if __name__ == '__main__':
         )
         model = None
         if method == 'QAT':
-            # model = Resnet(params_QAT)
-            model = Resnet.load_from_checkpoint(
-                'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
-                params=params_QAT
-            )
+            model = Resnet(params_QAT)
+            # model = Resnet.load_from_checkpoint(
+            #     'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
+            #     params=params_QAT
+            # )
         elif method == 'ISTA_LIU':
-            # model = Resnet(params_ISTA)
-            model = Resnet.load_from_checkpoint(
-                'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
-                params=params_ISTA
-            )
+            model = Resnet(params_ISTA)
+            # model = Resnet.load_from_checkpoint(
+            #     'model-resnet18-mnist-sgd-final-no-pre-trained/model-resnet50-mnist-redo-acc=0.8165.ckpt',
+            #     params=params_ISTA
+            # )
         name_QAT = '{params}'.format(
             params='-'.join([k + '={}'.format(v) if k != 'L' and k != 'epsilon' else k + '={}'.format(1 / v) for k, v in params_QAT.items()])
         )
@@ -123,6 +125,6 @@ if __name__ == '__main__':
         )
 
         trainer = pl.Trainer(max_epochs=max_epochs, gpus=1, logger=logger, callbacks=[ckpt])
-        trainer.fit(model, train_dataloader=train_loader, val_dataloaders=valid_loader)
+        trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=valid_loader)
 
     print('done')
