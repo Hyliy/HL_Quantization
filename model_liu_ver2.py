@@ -4,7 +4,7 @@ import torch
 import torchvision.models as models
 from torch.nn import functional as F
 from optimizer_liu_ver2 import ISTA_LIU, QAT
-from cifar10_models.resnet import resnet18, resnet34, resnet50
+from resnet import resnet18, resnet34, resnet50
 
 
 class Resnet(pl.LightningModule):
