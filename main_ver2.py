@@ -9,7 +9,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 from torchvision import transforms as T, datasets
 
-from model_liu_ver2 import Resnet
+from model_ver2 import Resnet
 
 
 def isfloat(value):
